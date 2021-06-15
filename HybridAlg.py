@@ -18,6 +18,14 @@ class Item:
     quality: float 
     purchase_probability: float 
 
+    def __eq__(self, o: object) -> bool:
+
+        return ( self.unit_price == o.unit_price and 
+               self.inventory_level == o.inventory_level and 
+               self.quantity == o.quantity and 
+               self.purchase_probability == o.purchase_probability )
+       
+
 def assign_purchase_probabilities(items, lambda_const):
     '''Assigns purchase probabilities to each item within the items iterable-object
 
@@ -66,6 +74,16 @@ def solve_q0_single(theta):
     return soln[0][0].evalf()
 
 def solve_V(x):
+    '''Solves the equation y * exp(y / (1 - y)) = x, for y. 
+
+    Helper method for computing the monotonic and injective function V(x)
+
+    Args:
+        x: a positive real number (type: float)
+
+    Returns:
+        the solution to the equation V(x), the solution is a number within [0, 1]
+    '''
     y = sp.symbols('y')
     soln = sp.solve(sp.Eq(y * np.e ** (y / (1 - y)), x), y)
     return soln[0][0].evalf()
@@ -112,6 +130,18 @@ def bisection(f,a,b,N, light_items):
     return (a_n + b_n) / 2
 
 def f(q0, light_items):
+    '''A gateway equation method used for the bisection method
+
+    Helper function used to compute the function f(q0) = Sum ( q0(S) * e ^ (theta_i - 1)) - (1 - q0(S)) 
+    in order the find the root q0(S).
+
+    Args:
+        q0: the current estimate of the no-purchase probability given a set S of Items
+        light_items: all of the Items with weight that is less than lambda
+
+    Returns:
+        The current function value of f.
+    '''
     function_value = 0
     for item in light_items:
         function_value += solve_V(q0 * np.e ** (item.quality - 1))
@@ -130,10 +160,19 @@ def simulate(heavy_items, light_items, m_const):
         if heavy_items:                                                             # Phase 1 of the algorithm: offering heavy items one by one
             if random.uniform(0, 1) <= heavy_items[0].purchase_probability:
                 sold_items.append(heavy_items.pop())
-              
-        else:                                                                       # Phase 2 of the algorithm: offering light items altogether
+        else:                                                                      # Phase 2 of the algorithm: offering light items altogether
             if light_items:
                 q0_approx = update_bundle_probabilities(light_items)
                 probs = (o.purchase_probability for o in light_items)
                 probs.append(q0_approx)
+                no_purchase_item = Item(0, 0, 0, q0_approx)
+                light_items.append(no_purchase_item)
                 item_bought = np.random.choice(light_items, probs)
+                sold_items.append(item_bought)
+
+                if item_bought == no_purchase_item:
+                    light_items.remove(item_bought)
+                else:
+                    light_items.remove(item_bought)
+                    light_items.remove(no_purchase_item)
+
