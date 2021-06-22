@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import numpy as np
-import sympy as sp
+from sympy import lambdify
+from scipy.optimize import fsolve
 import random
 import math
 
@@ -13,6 +14,7 @@ class Item:
     quality: a real number that describes the quality of an item (could be negative or positive)
     purchase_probability: a real number in [0,1]
     '''
+
     unit_price: float 
     inventory_level: int 
     quality: float 
@@ -47,7 +49,7 @@ def assign_purchase_probabilities(items, lambda_const):
 
     items.sort(key = lambda x: x.quality, reverse = True)
     for item in items:
-        item.purchase_probability = 1 - solve_q0_single(item.quality)
+        item.purchase_probability = 1 - bisection(f, 0, 1, 10000, [item])
         if (item.purchase_probability >= lambda_const):
             heavy_items.append(item)
         else:
@@ -55,23 +57,6 @@ def assign_purchase_probabilities(items, lambda_const):
         
     return heavy_items, light_items
     
-def solve_q0_single(theta):
-    '''Computes solves the equation (4) within the paper to compute the no-purchase probability q0.
-
-    Helper method for computing the no-purchase probability.
-
-    Args:
-        theta: the quality attribute of the single item in focus.
-
-    Returns:
-        The no-purchase probability associated with S where S := {i} where i is the item in focus.     
-    '''
-    q0,y = sp.symbols('q0, y')
-    
-    eq1 = sp.Eq(y, 1 - q0)
-    eq2 = sp.Eq(y * np.e ** (y / (1 - y)),  q0 * np.e ** (theta - 1))
-    soln = sp.solve((eq1,eq2), (q0, y))
-    return soln[0][0].evalf()
 
 def solve_V(x):
     '''Solves the equation y * exp(y / (1 - y)) = x, for y. 
@@ -84,9 +69,10 @@ def solve_V(x):
     Returns:
         the solution to the equation V(x), the solution is a number within [0, 1]
     '''
-    y = sp.symbols('y')
-    soln = sp.solve(sp.Eq(y * np.e ** (y / (1 - y)), x), y)
-    return soln[0][0].evalf()
+    func = lambda y : y * math.exp(y / (1-y)) - x
+    y_initial_guess = 0.5
+    return fsolve(func, y_initial_guess)
+
 
 def bisection(f,a,b,N, light_items):
     '''Approximate solution of f(x)=0 on interval [a,b] by bisection method.
@@ -113,7 +99,7 @@ def bisection(f,a,b,N, light_items):
   
     a_n = a
     b_n = b
-    for n in range(1,N+1):
+    for _ in range(N):
         m_n = (a_n + b_n)/2
         f_m_n = f(m_n,light_items)
         if f(a_n, light_items) * f_m_n < 0:
@@ -149,18 +135,34 @@ def f(q0, light_items):
     return function_value - 1 + q0
 
 def update_bundle_probabilities(light_items):
+    '''Finds the purchase probability when multiple items are offered in a bundle
+
+    Calls the function that computes that no-purchase probability when a bundle of 
+    items are offered. Then, using the no-purchase probability, it will update the 
+    purchase_probability of each item in the bundle
+
+    Args:
+        light_items: a list of Item objects that needs to have their purchase 
+        probability updated
+
+    Returns:
+        The approximate no-purchase probability associated with the bundle.
+    '''
     q0_approx = bisection(f, 0, 1, 10000, light_items)
     for item in light_items:
         item.purchase_probability = solve_V(q0_approx * np.e ** (item.quality - 1))
     return q0_approx
 
 def simulate(heavy_items, light_items, m_const):
+    '''
+    
+    '''
     sold_items = []
     for _ in m_const:
         if heavy_items:                                                             # Phase 1 of the algorithm: offering heavy items one by one
             if random.uniform(0, 1) <= heavy_items[0].purchase_probability:
                 sold_items.append(heavy_items.pop())
-        else:                                                                      # Phase 2 of the algorithm: offering light items altogether
+        else:                                                                       # Phase 2 of the algorithm: offering light items altogether
             if light_items:
                 q0_approx = update_bundle_probabilities(light_items)
                 probs = (o.purchase_probability for o in light_items)
