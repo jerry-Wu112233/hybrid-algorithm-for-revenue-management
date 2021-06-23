@@ -154,14 +154,28 @@ def update_bundle_probabilities(light_items):
     return q0_approx
 
 def simulate(heavy_items, light_items, m_const):
-    '''
+    '''Creates a simultation with m_const customers that purchases 1 inventory level
+    if the Item is selected. The heavy_items are offered first, one by one. If all of 
+    heavy_items are sold, then the light_items are offered altogether in a bundle.
+
+    Args:
+        heavy_items: a list of Items with purchase probability greater than lambda_const
+        light_items: a list of Items with purchase probability less than lambda_const
+        m_const: a positive integer describing the number of customers  
     
+    Returns:
+        total_revenue: sum of the prices of the Items sold throughout the simulation
     '''
+
+    total_revenue = 0
     sold_items = []
     for _ in m_const:
         if heavy_items:                                                             # Phase 1 of the algorithm: offering heavy items one by one
             if random.uniform(0, 1) <= heavy_items[0].purchase_probability:
-                sold_items.append(heavy_items.pop())
+                heavy_items[0].inventory_level -= 1
+                total_revenue += heavy_items[0].price
+                if heavy_items[0].inventory_level == 0:
+                    sold_items.append(heavy_items.pop())
         else:                                                                       # Phase 2 of the algorithm: offering light items altogether
             if light_items:
                 q0_approx = update_bundle_probabilities(light_items)
@@ -171,10 +185,16 @@ def simulate(heavy_items, light_items, m_const):
                 light_items.append(no_purchase_item)
                 item_bought = np.random.choice(light_items, probs)
                 sold_items.append(item_bought)
-
+                total_revenue += item_bought.price
                 if item_bought == no_purchase_item:
                     light_items.remove(item_bought)
                 else:
-                    light_items.remove(item_bought)
+                    light_items[light_items.index(item_bought)].inventory_level -= 1
+                    if light_items[light_items.index(item_bought)].inventory_level == 0:
+                        light_items.remove(item_bought)
                     light_items.remove(no_purchase_item)
 
+    return total_revenue
+
+def find_optimal_val(items):
+    pass
