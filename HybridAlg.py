@@ -6,6 +6,7 @@ import random
 import math
 from itertools import chain, combinations
 from scipy.optimize import linprog
+import matplotlib.pyplot as plt
 
 @dataclass
 class Item:
@@ -57,7 +58,8 @@ def assign_purchase_probabilities(items, lambda_const):
 
     items.sort(key = lambda x: x.quality, reverse = True)
     for item in items:
-        item.purchase_probability = 1 - bisection(f, 0, 1, 10000, [item])
+        
+        item.purchase_probability = 1 - bisection(f, 0, 1, 500, [item])
         if (item.purchase_probability >= lambda_const):
             heavy_items.append(item)
         else:
@@ -77,7 +79,13 @@ def solve_V(x):
     Returns:
         the solution to the equation V(x), the solution is a number within [0, 1]
     '''
-    func = lambda y : y * math.exp(y / (1-y)) - x
+    try:
+        np.seterr(divide='ignore', invalid='ignore')
+        func = lambda y : y * np.exp(y / (1-y)) - x
+        
+    except OverflowError:
+        func = float('inf')
+    
     y_initial_guess = 0.5
     return fsolve(func, y_initial_guess)
 
@@ -159,7 +167,7 @@ def update_bundle_probabilities(light_items):
     Returns:
         The approximate no-purchase probability associated with the bundle.
     '''
-    q0_approx = bisection(f, 0, 1, 10000, light_items)
+    q0_approx = bisection(f, 0, 1, 500, light_items)
     for item in light_items:
         item.purchase_probability = solve_V(q0_approx * np.e ** (item.quality - 1))
     return q0_approx
@@ -209,10 +217,10 @@ def simulate(heavy_items, light_items, m_const):
 
 def calculate_expected_revenue(bundle):
     if len(bundle) == 0: return 0
-    q0_bundle = bisection(f, 0, 1, 10000, bundle)
+    q0_bundle = bisection(f, 0, 1, 500, bundle)
     print(q0_bundle)
     if len(bundle) == 1: 
-        bundle[0].purchase_probability = solve_V( bisection(f, 0, 1, 10000, [bundle[0]]) * math.e ** (bundle[0].quality - 1))
+        bundle[0].purchase_probability = solve_V( bisection(f, 0, 1, 500, [bundle[0]]) * math.e ** (bundle[0].quality - 1))
     
     else: 
         for item in bundle:
@@ -232,7 +240,7 @@ def construct_constrain_matrix(power_set_item, m_const, items):
 
     constrain_matrix = np.zeros((len(items), len(power_set_item)))
     for i in range(len(power_set_item)):
-        q0_bundle = bisection(f, 0, 1, 10000, power_set_item[i])
+        q0_bundle = bisection(f, 0, 1, 500, power_set_item[i])
 
         for j in range(len(items)):
             purchase_probability = solve_V(q0_bundle * math.e ** (items[j].quality - 1))
@@ -286,13 +294,35 @@ def find_optimal_val(items, m_const):
 def main():
     items = []
     for _ in range(20):
-        items.append(Item(10, random.randint(1, 500), random.uniform(-100.0 , 100), 0))
-    revenue = 0
+        items.append(Item(10, random.randint(1, 100), random.uniform(-10 , 10), 0))
+    
     comp_ratio = []
     for m in range(100, 1000):
-        for _ in range(10000):
+        revenue = 0
+        for _ in range(5000):
             heavy_items, light_items = assign_purchase_probabilities(items, 0.5)
             revenue += simulate(heavy_items, light_items, m)
-        revenue /= 10000    
+        revenue /= 5000
+        comp_ratio.append(revenue / find_optimal_val(items, m))  
+    plt.plot(np.linspace(100,1000,900), comp_ratio, 'o', color='black')
+    plt.title("m vs Competitive Ratio")
+    plt.xlabel("m (number of buyers)")
+    plt.ylabel("Competitive ratio ( E [R ( Alg )] / OPT )")
+    plt.show()
+    # for inv_lvl in range(1, 51):
+    #     items[0].inventory_level = inv_lvl
+    #     for _ in range(3000):
+    #         heavy_items, light_items = assign_purchase_probabilities(items, 0.5)
+    #         revenue += simulate(heavy_items, light_items, 100)
+    #     revenue /= 5000
+    #     comp_ratio.append(revenue / find_optimal_val(items, 100)) 
+    # plt.plot(np.linspace(1,50,50), comp_ratio, 'o', color='black')
+    
+    # for l in range(0.3, 0.9, 0.01):
+    #     for _ in range(5000):
+    #         heavy_items, light_items = assign_purchase_probabilities(items, l)
+    #         revenue += simulate(heavy_items, light_items, 100)
+    #     revenue /= 5000
+    #     comp_ratio.append(revenue / find_optimal_val(items, 100))  
 if __name__ == "__main__":
     main()    
