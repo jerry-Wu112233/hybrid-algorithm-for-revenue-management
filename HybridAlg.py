@@ -4,6 +4,8 @@ from sympy import lambdify
 from scipy.optimize import fsolve
 import random
 import math
+from itertools import chain, combinations
+from scipy.optimize import linprog
 
 @dataclass
 class Item:
@@ -21,12 +23,18 @@ class Item:
     purchase_probability: float 
 
     def __eq__(self, o: object) -> bool:
-
+        '''Equal method for compariing two Item type objects
+        Args:
+            self, o: Item object
+        Returns:
+            true if two Item objects have the same attribute values, false otherwise
+        '''
         return ( self.unit_price == o.unit_price and 
                self.inventory_level == o.inventory_level and 
-               self.quantity == o.quantity and 
+               self.quality == o.quality and 
                self.purchase_probability == o.purchase_probability )
        
+
 
 def assign_purchase_probabilities(items, lambda_const):
     '''Assigns purchase probabilities to each item within the items iterable-object
@@ -96,7 +104,10 @@ def bisection(f,a,b,N, light_items):
         If all signs of values f(a_n), f(b_n) and f(m_n) are the same at any
         iteration, the bisection method fails and return None.
     '''
-  
+
+    if len(light_items) == 0:
+        return 1
+
     a_n = a
     b_n = b
     for _ in range(N):
@@ -169,23 +180,23 @@ def simulate(heavy_items, light_items, m_const):
 
     total_revenue = 0
     sold_items = []
-    for _ in m_const:
+    for _ in range(m_const - 1):
         if heavy_items:                                                             # Phase 1 of the algorithm: offering heavy items one by one
             if random.uniform(0, 1) <= heavy_items[0].purchase_probability:
                 heavy_items[0].inventory_level -= 1
-                total_revenue += heavy_items[0].price
+                total_revenue += 1 / ( 1 - heavy_items[0].purchase_probability )
                 if heavy_items[0].inventory_level == 0:
                     sold_items.append(heavy_items.pop())
         else:                                                                       # Phase 2 of the algorithm: offering light items altogether
             if light_items:
                 q0_approx = update_bundle_probabilities(light_items)
-                probs = (o.purchase_probability for o in light_items)
+                probs = [o.purchase_probability for o in light_items]
                 probs.append(q0_approx)
                 no_purchase_item = Item(0, 0, 0, q0_approx)
                 light_items.append(no_purchase_item)
-                item_bought = np.random.choice(light_items, probs)
+                item_bought = np.random.choice(light_items, 1,p=probs)[0]
                 sold_items.append(item_bought)
-                total_revenue += item_bought.price
+                total_revenue += 1 / ( 1 - item_bought.purchase_probability ) 
                 if item_bought == no_purchase_item:
                     light_items.remove(item_bought)
                 else:
@@ -196,5 +207,92 @@ def simulate(heavy_items, light_items, m_const):
 
     return total_revenue
 
-def find_optimal_val(items):
-    pass
+def calculate_expected_revenue(bundle):
+    if len(bundle) == 0: return 0
+    q0_bundle = bisection(f, 0, 1, 10000, bundle)
+    print(q0_bundle)
+    if len(bundle) == 1: 
+        bundle[0].purchase_probability = solve_V( bisection(f, 0, 1, 10000, [bundle[0]]) * math.e ** (bundle[0].quality - 1))
+    
+    else: 
+        for item in bundle:
+            item.purchase_probability = solve_V(q0_bundle * math.e ** ( 1 - item.quality))
+    
+    expected_revenue = 0
+    for item in bundle:
+        q_i = solve_V(q0_bundle * math.e ** (item.quality - 1))
+        expected_revenue +=  q_i / ( 1 - q_i ) 
+    return expected_revenue
+
+def generate_item_power_set(iterable):
+
+    return list(chain.from_iterable(combinations(iterable, r) for r in range(len(iterable)+1)))
+
+def construct_constrain_matrix(power_set_item, m_const, items):
+
+    constrain_matrix = np.zeros((len(items), len(power_set_item)))
+    for i in range(len(power_set_item)):
+        q0_bundle = bisection(f, 0, 1, 10000, power_set_item[i])
+
+        for j in range(len(items)):
+            purchase_probability = solve_V(q0_bundle * math.e ** (items[j].quality - 1))
+            constrain_matrix[j][i] = purchase_probability
+
+    result = constrain_matrix 
+    for _ in range(m_const - 1):
+        result = np.concatenate((result, constrain_matrix), axis = 1)    
+           
+    return result
+def construct_probability_simplex_matrix(power_set_item, m_const):
+    length = len(power_set_item)
+    probability_simplex_matrix = np.zeros((m_const * length, m_const * length))
+    counter = 0
+    for row in range(0, m_const * length, length):
+        for col in range(length):
+            probability_simplex_matrix[row][(counter * length) + col] = 1
+
+        counter += 1    
+
+    return probability_simplex_matrix
+
+def construct_objective_matrix(power_set_item, m_const):
+    objective_vec = []
+    for bundle in power_set_item:
+        expected_bundle_revenue = calculate_expected_revenue(bundle)
+        objective_vec.append(expected_bundle_revenue)
+    objective_vec = np.array(objective_vec)
+    result = objective_vec
+    for _ in range(m_const - 1):
+        result = np.append(result, objective_vec) 
+    return result
+
+def find_optimal_val(items, m_const):
+    power_set_item = generate_item_power_set(items)
+    inventory_level_vec = np.array([o.inventory_level for o in items])
+    constrain_matrix = construct_constrain_matrix(power_set_item, m_const, items)
+    probability_simplex_matrix = construct_probability_simplex_matrix(power_set_item, m_const)
+    simplex_constraint = np.zeros(m_const * 2 ** len(items))
+    for i in range(0, m_const * 2 ** len(items), 2 ** len(items)):
+        simplex_constraint[i] = 1
+
+    # combined_matrix = np.concatenate((constrain_matrix, probability_simplex_matrix), axis = 0)
+    # combined_constraint = np.append(inventory_level_vec, simplex_constraint)
+    objective_function_vec = construct_objective_matrix(power_set_item, m_const)
+    sol = linprog(-objective_function_vec, A_ub=constrain_matrix, b_ub=inventory_level_vec, A_eq = probability_simplex_matrix, b_eq = simplex_constraint, bounds = (0,1))
+    
+    
+    return sol
+
+def main():
+    items = []
+    for _ in range(20):
+        items.append(Item(10, random.randint(1, 500), random.uniform(-100.0 , 100), 0))
+    revenue = 0
+    comp_ratio = []
+    for m in range(100, 1000):
+        for _ in range(10000):
+            heavy_items, light_items = assign_purchase_probabilities(items, 0.5)
+            revenue += simulate(heavy_items, light_items, m)
+        revenue /= 10000    
+if __name__ == "__main__":
+    main()    
