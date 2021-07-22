@@ -49,8 +49,8 @@ class HybridAlgTest(unittest.TestCase):
         # print(simulate(heavy_items, light_items, 2))
         # print("here")
         # for bundle in generate_item_power_set(items):
-        # #     print(bundle)
-        # #     print("expected revenue: " + str(calculate_expected_revenue(bundle)))
+        #    print(bundle)
+        #    print("expected revenue: " + str(calculate_expected_revenue(bundle)))
         #     q0_bundle = bisection(f, 0, 1, 10000, bundle)
         #     for item in items:
         #         print("item: " + str(item))
