@@ -60,6 +60,17 @@ class HybridAlgTest(unittest.TestCase):
         item2 = Item(2, 2, 2, 0)
         items = [item1, item2]
         self.assertTrue( abs(-find_optimal_val(items, 2).fun - 2.1280097) < tol)
+
+    def test_playground(self):
+        items = []
+        for _ in range(5):
+            inv = random.randint(1, 2)
+            items.append(Item(inv, inv, random.uniform(0 , 10), 0))
+
+        
+        for item in items:
+            print(item)
+        print("revenue: " + str(simulate_2(items, 20, 0.5)))
         
 if __name__ == '__main__':
     unittest.main()   

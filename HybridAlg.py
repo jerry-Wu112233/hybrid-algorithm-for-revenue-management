@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 class Item:
     '''A data class with four attributes
     
-    unit_price: a positive real number that stores the price of an item
+    original_inventory: a positive integer that describes the original inventory level of an item
     inventory_level: a positive integer that describes the current inventory level of an item
     quality: a real number that describes the quality of an item (could be negative or positive)
     purchase_probability: a real number in [0,1]
@@ -31,7 +31,7 @@ class Item:
         Returns:
             true if two Item objects have the same attribute values, false otherwise
         '''
-        return ( self.unit_price == o.unit_price and 
+        return ( self.original_inventory == o.original_inventory and 
                self.inventory_level == o.inventory_level and 
                self.quality == o.quality and 
                self.purchase_probability == o.purchase_probability )
@@ -174,10 +174,10 @@ def update_bundle_probabilities(light_items):
     return q0_approx
 
 def weight_function(x):
-    if np.iscomplex((math.e / ( 1 - math.e )) * (1 - math.e)**(-x)): return 1.0
-    else:
-        return (math.e / ( 1 - math.e )) * (1 - math.e)**(-x)
-
+    # if np.iscomplex((math.e / ( 1 - math.e )) * (1 - math.e)**(-x)): return 1.0
+    # else:
+    #     return (math.e / ( 1 - math.e )) * (1 - math.e)**(-x)
+    return x**2
 def assign_probability_v2(items, lambda_const):
     heavy_items = []
     light_items = []
@@ -196,35 +196,42 @@ def assign_probability_v2(items, lambda_const):
     return heavy_items, light_items
 
 def simulate_2(items, m_const, lambda_const):
-    
+    print("beginning simulation2")
     total_revenue = 0
     sold_items = []
     for _ in range(m_const - 1):
         heavy_items, light_items = assign_probability_v2(items, lambda_const)
-        if heavy_items:                                                             # Phase 1 of the algorithm: offering heavy items one by one
+        if heavy_items:
             if random.uniform(0, 1) <= heavy_items[0].purchase_probability:
                 heavy_items[0].inventory_level -= 1
                 total_revenue += 1 / ( 1 - heavy_items[0].purchase_probability )
-                if heavy_items[0].inventory_level == 0:
-                    sold_items.append(heavy_items.pop())
+                if heavy_items[0].inventory_level <= 0:
+                    sold_items.append(heavy_items.pop(0))
         else:                                                                       # Phase 2 of the algorithm: offering light items altogether
             if light_items:
                 q0_approx = update_bundle_probabilities(light_items)
                 probs = [o.purchase_probability for o in light_items]
                 probs.append(q0_approx)
+                for i in probs:
+                    i = i / sum(probs)
                 no_purchase_item = Item(0, 0, 0, q0_approx)
                 light_items.append(no_purchase_item)
-                item_bought = np.random.choice(light_items, 1,p=probs)[0]
-                sold_items.append(item_bought)
+                item_bought = light_items[0]
+                if sum(probs) != 1:
+                    item_bought = np.random.choice(light_items)
+                else:    
+                    item_bought = np.random.choice(light_items, 1,p=probs)[0]
+                    sold_items.append(item_bought)
                 total_revenue += 1 / ( 1 - item_bought.purchase_probability ) 
                 if item_bought == no_purchase_item:
+
                     light_items.remove(item_bought)
                 else:
                     light_items[light_items.index(item_bought)].inventory_level -= 1
-                    if light_items[light_items.index(item_bought)].inventory_level == 0:
+                    if light_items[light_items.index(item_bought)].inventory_level <= 0:
                         light_items.remove(item_bought)
                     light_items.remove(no_purchase_item)
-
+        items = heavy_items + light_items
     return total_revenue
 
 def simulate(heavy_items, light_items, m_const):
@@ -240,21 +247,25 @@ def simulate(heavy_items, light_items, m_const):
     Returns:
         total_revenue: sum of the prices of the Items sold throughout the simulation
     '''
-
+    print("simulation started")
     total_revenue = 0
     sold_items = []
     for _ in range(m_const - 1):
-        if heavy_items:                                                             # Phase 1 of the algorithm: offering heavy items one by one
+        if heavy_items:        
+                                                   # Phase 1 of the algorithm: offering heavy items one by one
             if random.uniform(0, 1) <= heavy_items[0].purchase_probability:
                 heavy_items[0].inventory_level -= 1
+                
                 total_revenue += 1 / ( 1 - heavy_items[0].purchase_probability )
-                if heavy_items[0].inventory_level == 0:
-                    sold_items.append(heavy_items.pop())
+                if heavy_items[0].inventory_level <= 0:
+                    sold_items.append(heavy_items.pop(0))
         else:                                                                       # Phase 2 of the algorithm: offering light items altogether
             if light_items:
                 q0_approx = update_bundle_probabilities(light_items)
                 probs = [o.purchase_probability for o in light_items]
                 probs.append(q0_approx)
+                for i in probs:
+                    i = i / sum(probs)
                 no_purchase_item = Item(0, 0, 0, q0_approx)
                 light_items.append(no_purchase_item)
                 item_bought = np.random.choice(light_items, 1,p=probs)[0]
@@ -264,6 +275,7 @@ def simulate(heavy_items, light_items, m_const):
                     light_items.remove(item_bought)
                 else:
                     light_items[light_items.index(item_bought)].inventory_level -= 1
+                    
                     if light_items[light_items.index(item_bought)].inventory_level == 0:
                         light_items.remove(item_bought)
                     light_items.remove(no_purchase_item)
@@ -308,7 +320,7 @@ def construct_constrain_matrix(power_set_item, m_const, items):
     return result
 def construct_probability_simplex_matrix(power_set_item, m_const):
     length = len(power_set_item)
-    probability_simplex_matrix = np.zeros((m_const * length, m_const * length))
+    probability_simplex_matrix = np.zeros((m_const * length, m_const * length), dtype=np.uint8)
     counter = 0
     for row in range(0, m_const * length, length):
         for col in range(length):
@@ -347,102 +359,102 @@ def find_optimal_val(items, m_const):
     return sol
 
 def main():
-    # items = []
-    # for _ in range(10):
-    #     items.append(Item(random.randint(1, 100), random.randint(1, 100), random.uniform(0 , 10), 0))
-    
-    # comp_ratio = []
-    # for m in range(100, 1000, 5):
-    #     revenue = 0
-    #     for _ in range(2000):
-    #         heavy_items, light_items = assign_purchase_probabilities(items, 0.5)
-    #         revenue += simulate(heavy_items, light_items, m)
-    #     revenue /= 2000
-    #     comp_ratio.append(revenue / -find_optimal_val(items, m)) 
-
-    # plt.plot(np.linspace(100,1000,900), comp_ratio, 'o', color='black')
-    # plt.title("m vs Competitive Ratio, lambda = 1/2")
-    # plt.xlabel("m (number of buyers)")
-    # plt.ylabel("Competitive ratio ( E[R(Alg)] / OPT )")
-    # plt.savefig('m vs Competitive Ratio.png')
-
-    # comp_ratio = []
-    # for inv_lvl in range(1, 51):
-    #     items[0].inventory_level = inv_lvl
-    #     revenue = 0
-    #     for _ in range(2000):
-    #         heavy_items, light_items = assign_purchase_probabilities(items, 0.5)
-    #         revenue += simulate(heavy_items, light_items, 50)
-    #     revenue /= 2000
-    #     comp_ratio.append(revenue / -find_optimal_val(items, 50)) 
-    # plt.plot(np.linspace(1,51,50), comp_ratio, 'o', color='black')
-    # plt.title("inventory_level vs Competitive Ratio, m = 50, lambda = 1/2")
-    # plt.xlabel("inventory level")
-    # plt.ylabel("Competitive ratio ( E[R(Alg)] / OPT )")
-    # plt.savefig('inventory level vs Competitive Ratio.png')
-
-    # comp_ratio = []
-    # arr = np.linspace(0.3,0.9,60)
-    # for l in arr:
-    #     revenue = 0
-    #     for _ in range(1000):
-    #         heavy_items, light_items = assign_purchase_probabilities(items, 0.3)
-    #         revenue += simulate(heavy_items, light_items, 100)
-    #     revenue /= 2000
-    #     comp_ratio.append(revenue / -find_optimal_val(items, 100))  
-    # plt.plot(np.linspace(0.3,0.9,60), comp_ratio, 'o', color='black')
-    # plt.title("lambda vs Competitive Ratio, m = 50")
-    # plt.xlabel("lambda")
-    # plt.ylabel("Competitive ratio ( E [R ( Alg )] / OPT )")
-    # plt.savefig('lambda vs Competitive Ratio.png')
-# ---------------------------------------------------------------------------------------------------
     items = []
-    for _ in range(10):
-        inventory_lvl = random.randint(1, 100)
-        items.append(Item(inventory_lvl, inventory_lvl, random.uniform(0 , 10), 0))
+    for _ in range(5):
+        items.append(Item(random.randint(1, 50), random.randint(1, 50), random.uniform(-10 , 10), 0))
     
-    comp_ratio = []
-    for m in range(100, 1000, 5):
+    r = []
+    for m in range(10, 50, 1):
         revenue = 0
-        for _ in range(2000):
-            revenue += simulate_2(items, m, 0.5)
-        revenue /= 2000
-        comp_ratio.append(revenue / -find_optimal_val(items, m)) 
+        for _ in range(100):
+            heavy_items, light_items = assign_purchase_probabilities(items, 0.5)
+            revenue += simulate(heavy_items, light_items, m)
+        revenue /= 100
+        r.append(revenue / -find_optimal_val(items, m).fun) 
 
-    plt.plot(np.linspace(100,1000,900), comp_ratio, 'o', color='black')
-    plt.title("m vs Competitive Ratio, lambda = 1/2, relative_weight")
+    plt.plot(np.linspace(10,50,40), r, 'o', color='black')
+    plt.title("m vs Comp Ratio lambda = 1/2")
     plt.xlabel("m (number of buyers)")
-    plt.ylabel("Competitive ratio ( E[R(Alg2)] / OPT )")
-    plt.savefig('m vs Competitive Ratio rel weight.png')
+    plt.ylabel("Comp Ratio")
+    plt.savefig('m vs Comp Ration alg1 s.png')
 
-    comp_ratio = []
-    for inv_lvl in range(1, 51):
+    r = []
+    for inv_lvl in range(7, 16):
         items[0].inventory_level = inv_lvl
         revenue = 0
-        for _ in range(2000):
-            revenue += simulate_2(items, 50, 0.5)
-        revenue /= 2000
-        comp_ratio.append(revenue / -find_optimal_val(items, 50)) 
-    plt.plot(np.linspace(1,51,50), comp_ratio, 'o', color='black')
-    plt.title("inventory_level vs Competitive Ratio, m = 50, lambda = 1/2, relative_weight")
+        for _ in range(100):
+            heavy_items, light_items = assign_purchase_probabilities(items, 0.5)
+            revenue += simulate(heavy_items, light_items, 25)
+        revenue /= 100
+        r.append(revenue / -find_optimal_val(items, 25).fun) 
+    plt.plot(np.linspace(7,16,10), r, 'o', color='black')
+    plt.title("inventory_level vs revenue, m = 25, lambda = 1/2")
     plt.xlabel("inventory level")
-    plt.ylabel("Competitive ratio ( E[R(Alg)] / OPT )")
-    plt.savefig('inventory level vs Competitive Ratio rel weight.png')
+    plt.ylabel("comp ratio")
+    plt.savefig('inventory level vs comp ratio alg1 s.png')
+
+    r = []
+    arr = np.linspace(0.3,0.9,60)
+    for l in arr:
+        revenue = 0
+        for _ in range(100):
+            heavy_items, light_items = assign_purchase_probabilities(items, l)
+            revenue += simulate(heavy_items, light_items, 25)
+        revenue /= 100
+        r.append(revenue / -find_optimal_val(items, 25).fun)  
+    plt.plot(np.linspace(0.3,0.9,60), r, 'o', color='black')
+    plt.title("lambda vs Revenue, m = 25")
+    plt.xlabel("lambda")
+    plt.ylabel("Revenue")
+    plt.savefig('lambda vs Revenue alg1 s.png')
+# ---------------------------------------------------------------------------------------------------
+    items = []
+    for _ in range(5):
+        inventory_lvl = random.randint(1, 50)
+        items.append(Item(inventory_lvl, inventory_lvl, random.uniform(-10 , 10), 0))
+    
+    comp_ratio = []
+    for m in range(10, 50):
+        revenue = 0
+        for _ in range(100):
+            revenue += simulate_2(items, m, 0.5)
+        revenue /= 100
+        comp_ratio.append(revenue / -find_optimal_val(items,m).fun) 
+
+    plt.plot(np.linspace(10,50,40), comp_ratio, 'o', color='black')
+    plt.title("m vs comp ratio, lambda = 1/2, relative_weight")
+    plt.xlabel("m (number of buyers)")
+    plt.ylabel("Comp Ratio")
+    plt.savefig('m vs comp ratio Alg2.png')
+
+    comp_ratio = []
+    for inv_lvl in range(7, 16):
+        items[0].inventory_level = inv_lvl
+        revenue = 0
+        for _ in range(100):
+            revenue += simulate_2(items, 25, 0.5)
+        revenue /= 100
+        comp_ratio.append(revenue / -find_optimal_val(items,25).fun) 
+    plt.plot(np.linspace(15,30,15), comp_ratio, 'o', color='black')
+    plt.title("inventory_level vs comp ratio, m = 25, lambda = 1/2, relative_weight")
+    plt.xlabel("inventory level")
+    plt.ylabel("comp ratio")
+    plt.savefig('inventory level vs Revenue alg2 s .png')
 
     comp_ratio = []
     arr = np.linspace(0.3,0.9,60)
     for l in arr:
         revenue = 0
-        for _ in range(1000):
+        for _ in range(100):
 
             revenue += simulate_2(items, 50, l)
-        revenue /= 2000
-        comp_ratio.append(revenue / -find_optimal_val(items, 50))  
+        revenue /= 100
+        comp_ratio.append(revenue / -find_optimal_val(items,25).fun)  
     plt.plot(np.linspace(0.3,0.9,60), comp_ratio, 'o', color='black')
-    plt.title("lambda vs Competitive Ratio, m = 50")
+    plt.title("lambda vs Revenue, m = 25")
     plt.xlabel("lambda")
-    plt.ylabel("Competitive ratio ( E [R ( Alg )] / OPT )")
-    plt.savefig('lambda vs Competitive Ratio.png')
+    plt.ylabel("comp ratio")
+    plt.savefig('lambda vs comp ratio alg2 s.png')
 
 if __name__ == "__main__":
     main()    
